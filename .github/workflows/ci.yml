@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v12
+
+      - name: Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v7
+
+      - name: Rust fmt
+        run: nix develop -c cargo fmt --all -- --check
+
+      - name: Clippy
+        run: nix develop -c cargo clippy --all-targets --all-features -D warnings
+
+      - name: Tests
+        run: nix develop -c cargo test --all
