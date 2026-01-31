@@ -97,7 +97,11 @@ impl OpenCodeClassifier {
         Ok(created.id)
     }
 
-    async fn prompt_session(&self, session_id: &str, prompt: &str) -> Result<String, ClassifyError> {
+    async fn prompt_session(
+        &self,
+        session_id: &str,
+        prompt: &str,
+    ) -> Result<String, ClassifyError> {
         let url = format!("{}/session/{}/message", self.base_url, session_id);
         let model = match (&self.provider_id, &self.model_id) {
             (Some(provider_id), Some(model_id)) => Some(ModelRef {
@@ -108,7 +112,9 @@ impl OpenCodeClassifier {
         };
         let request = SessionPromptRequest {
             model,
-            system: Some("You are a narrative analysis system. Output only valid JSON.".to_string()),
+            system: Some(
+                "You are a narrative analysis system. Output only valid JSON.".to_string(),
+            ),
             parts: vec![PartInput::text(prompt.to_string())],
         };
 

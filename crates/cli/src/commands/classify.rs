@@ -9,8 +9,8 @@ use news_tagger_adapters::{
         OpenCodeClassifier, StubClassifier,
     },
 };
-use news_tagger_domain::{Classifier, DefinitionsRepo, SourcePost};
 use news_tagger_domain::usecases::{ClassifyConfig, ClassifyUseCase};
+use news_tagger_domain::{Classifier, DefinitionsRepo, SourcePost};
 use secrecy::SecretString;
 use std::io::{self, Read};
 use std::path::PathBuf;

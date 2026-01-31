@@ -1,25 +1,25 @@
 //! LLM provider adapters
 
+pub mod anthropic;
 pub mod claude_code;
 pub mod codex;
-pub mod local_command;
-pub mod opencode;
-pub mod anthropic;
 pub mod gemini;
+pub mod local_command;
 pub mod ollama;
 pub mod openai;
 pub mod openai_compat;
+pub mod opencode;
 pub mod stub;
 
+pub use anthropic::AnthropicClassifier;
 pub use claude_code::ClaudeCodeClassifier;
 pub use codex::CodexClassifier;
-pub use local_command::LocalCommandClassifier;
-pub use opencode::OpenCodeClassifier;
-pub use anthropic::AnthropicClassifier;
 pub use gemini::GeminiClassifier;
+pub use local_command::LocalCommandClassifier;
 pub use ollama::OllamaClassifier;
 pub use openai::OpenAiClassifier;
 pub use openai_compat::OpenAiCompatClassifier;
+pub use opencode::OpenCodeClassifier;
 pub use stub::StubClassifier;
 
 use serde::{Deserialize, Serialize};

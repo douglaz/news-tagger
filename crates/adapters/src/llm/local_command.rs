@@ -50,24 +50,23 @@ impl LocalCommandClassifier {
 
         if !used_prompt_arg {
             if let Some(mut stdin) = child.stdin.take() {
-                stdin.write_all(prompt.as_bytes()).await.map_err(|e| {
-                    ClassifyError::Api(format!("Failed to write to stdin: {}", e))
-                })?;
+                stdin
+                    .write_all(prompt.as_bytes())
+                    .await
+                    .map_err(|e| ClassifyError::Api(format!("Failed to write to stdin: {}", e)))?;
             }
         }
 
-        let status = match tokio::time::timeout(
-            Duration::from_secs(self.config.timeout_secs),
-            child.wait(),
-        )
-        .await
-        {
-            Ok(result) => result.map_err(|e| ClassifyError::Api(e.to_string()))?,
-            Err(_) => {
-                let _ = child.kill().await;
-                return Err(ClassifyError::Timeout);
-            }
-        };
+        let status =
+            match tokio::time::timeout(Duration::from_secs(self.config.timeout_secs), child.wait())
+                .await
+            {
+                Ok(result) => result.map_err(|e| ClassifyError::Api(e.to_string()))?,
+                Err(_) => {
+                    let _ = child.kill().await;
+                    return Err(ClassifyError::Timeout);
+                }
+            };
 
         let mut stdout_bytes = Vec::new();
         if let Some(mut stdout) = child.stdout.take() {
@@ -197,13 +196,7 @@ mod tests {
         assert!(used_prompt);
         assert_eq!(
             expanded,
-            vec![
-                "--model",
-                "test-model",
-                "--temp=0.7",
-                "--max=256",
-                "PROMPT"
-            ]
+            vec!["--model", "test-model", "--temp=0.7", "--max=256", "PROMPT"]
         );
     }
 
