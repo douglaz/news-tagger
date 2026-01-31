@@ -1,0 +1,77 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/domain",
+    "crates/adapters",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["news-tagger contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/news-tagger"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# HTTP
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Config
+config = "0.14"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Errors
+thiserror = "2"
+anyhow = "1"
+
+# Time
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+
+# Async traits
+async-trait = "0.1"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# FS watching
+notify = "7"
+
+# Crypto/hashing
+sha2 = "0.10"
+
+# Secrets
+secrecy = { version = "0.10", features = ["serde"] }
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Testing
+wiremock = "0.6"
+assert_cmd = "2"
+predicates = "3"
+insta = { version = "1", features = ["json"] }
+tempfile = "3"
+
+# Internal crates
+news-tagger-domain = { path = "crates/domain" }
+news-tagger-adapters = { path = "crates/adapters" }
+
+[profile.release]
+lto = true
+codegen-units = 1

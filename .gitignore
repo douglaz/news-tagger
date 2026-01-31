@@ -1,0 +1,31 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Cargo.lock is typically committed for binaries
+# (already committed here)
+
+# IDEs
+/.idea/
+/.vscode/
+*.iml
+
+# OS
+.DS_Store
+
+# Local env/config
+config.toml
+.env
+
+# Claude / opencode / agent caches
+/.agent/
+/.ralph/
+/.claude/
+/.claude.json
+
+# Nix
+/result
+/result-*
+
+# Logs
+*.log
