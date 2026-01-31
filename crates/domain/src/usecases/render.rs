@@ -128,8 +128,7 @@ impl Renderer {
         classification
             .tags
             .iter()
-            .filter(|t| t.confidence >= self.config.min_confidence)
-            .next()
+            .find(|t| t.confidence >= self.config.min_confidence)
             .map(|t| {
                 // Truncate rationale to fit
                 if t.rationale.len() > 100 {

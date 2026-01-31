@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Top-level configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -188,7 +188,7 @@ pub struct CodexConfig {
     pub timeout_secs: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct XConfig {
     #[serde(default)]
     pub read: XReadConfig,
@@ -391,15 +391,6 @@ impl Default for LlmConfig {
     }
 }
 
-impl Default for XConfig {
-    fn default() -> Self {
-        Self {
-            read: XReadConfig::default(),
-            write: XWriteConfig::default(),
-        }
-    }
-}
-
 impl Default for XWriteConfig {
     fn default() -> Self {
         Self {
@@ -417,18 +408,6 @@ impl Default for NostrConfig {
             enabled: false,
             secret_key_env: default_nostr_secret_key_env(),
             relays: vec![],
-        }
-    }
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            watch: WatchConfig::default(),
-            llm: LlmConfig::default(),
-            x: XConfig::default(),
-            nostr: NostrConfig::default(),
         }
     }
 }

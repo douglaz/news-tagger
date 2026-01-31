@@ -95,8 +95,8 @@ impl FsDefinitionsRepo {
     fn extract_title_from_markdown(&self, content: &str) -> Option<String> {
         for line in content.lines() {
             let line = line.trim();
-            if line.starts_with("# ") {
-                return Some(line[2..].trim().to_string());
+            if let Some(stripped) = line.strip_prefix("# ") {
+                return Some(stripped.trim().to_string());
             }
         }
         None

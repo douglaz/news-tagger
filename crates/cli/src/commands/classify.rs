@@ -196,13 +196,13 @@ pub(crate) fn build_classifier(config: &AppConfig) -> Result<Box<dyn Classifier>
 }
 
 fn adapter_llm_config(config: &crate::config::LlmConfig) -> AdapterLlmConfig {
-    let mut llm_config = AdapterLlmConfig::default();
-    llm_config.model = config.model.clone();
-    llm_config.temperature = config.temperature;
-    llm_config.max_output_tokens = config.max_output_tokens;
-    llm_config.timeout_secs = config.timeout_secs;
-    llm_config.retries = config.retries;
-    llm_config
+    AdapterLlmConfig {
+        model: config.model.clone(),
+        temperature: config.temperature,
+        max_output_tokens: config.max_output_tokens,
+        timeout_secs: config.timeout_secs,
+        retries: config.retries,
+    }
 }
 
 fn classify_config_from_config(config: &AppConfig) -> ClassifyConfig {
