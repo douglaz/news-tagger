@@ -176,12 +176,12 @@ pub struct ClaudeCodeConfig {
     pub timeout_secs: Option<u64>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CodexConfig {
     #[serde(default = "default_codex_command")]
     pub command: String,
 
-    #[serde(default)]
+    #[serde(default = "default_codex_args")]
     pub args: Vec<String>,
 
     #[serde(default)]
@@ -339,6 +339,10 @@ fn default_codex_command() -> String {
     "codex".to_string()
 }
 
+fn default_codex_args() -> Vec<String> {
+    vec!["exec".to_string(), "-".to_string()]
+}
+
 fn default_opencode_base_url() -> String {
     "http://127.0.0.1:4096".to_string()
 }
@@ -408,6 +412,16 @@ impl Default for NostrConfig {
             enabled: false,
             secret_key_env: default_nostr_secret_key_env(),
             relays: vec![],
+        }
+    }
+}
+
+impl Default for CodexConfig {
+    fn default() -> Self {
+        Self {
+            command: default_codex_command(),
+            args: default_codex_args(),
+            timeout_secs: None,
         }
     }
 }
@@ -496,7 +510,7 @@ args = []
 
 [llm.codex]
 command = "codex"
-args = []
+args = ["exec", "-"]  # bare codex is interactive; use exec - for piped stdin/stdout automation
 # timeout_secs = 45
 
 [llm.opencode]
