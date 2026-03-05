@@ -1,3 +1,23 @@
+---
+artifact: prompt-review
+project: issue-3
+backend: codex(gpt-5.3-codex-xhigh)
+role: prompt_reviewer
+created_at: 2026-03-05T04:11:26Z
+---
+
+# Prompt Review
+
+## Issues Found
+- The CLI migration instructions conflict: one part says “add `?`” while another says “remove `Ok(...)` and return directly.” This can cause incorrect call-site changes.
+- Deterministic signing is underspecified and technically inconsistent (mentions RFC6979 for BIP-340). If nonce behavior is not explicitly fixed, tests may be flaky.
+- “Pass NIP-01 validation” is not operationally defined. Without explicit checks, implementations may satisfy different interpretations.
+- The “known test vector” requirement does not specify the exact source/values, reducing reproducibility.
+- Bech32 parsing rules are incomplete (variant/case expectations not explicit), which can lead to accidental acceptance of invalid `nsec` inputs.
+- `derive_pubkey` panic-on-`None` is accepted by invariant, but this leaves an avoidable runtime failure mode untested and implicit.
+- Error requirements say “descriptive message” but do not define expected error categories/substrings, making behavior hard to test consistently.
+
+## Refined Prompt
 Implement real NIP-01 cryptographic signing in the Rust Nostr adapter by replacing placeholder crypto logic. Focus only on local cryptographic correctness (`pubkey`, `id`, `sig`) and key parsing.
 
 ### Objective

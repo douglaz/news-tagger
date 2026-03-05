@@ -1,0 +1,17 @@
+{
+  "idea": "Implement real Nostr event signing (secp256k1)\n\n## Summary\n\nThe Nostr adapter (`crates/adapters/src/nostr/mod.rs`) currently uses placeholder cryptographic signatures instead of real NIP-01 compliant signing.\n\n## Current State\n\n- `sig` field is hardcoded as `\"placeholder_signature\"` (line ~65)\n- Public key derivation uses SHA256 hash instead of proper secp256k1 key derivation\n- Comments explicitly mark these as placeholders\n\n## What's Needed\n\n- Add a `secp256k1` (or `k256`) crate dependency for proper elliptic curve signing\n- Derive the public key from the Nostr secret key (nsec)\n- Sign events per [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md) specification\n- Compute the event ID as SHA256 of the serialized event\n\n## Impact\n\nWithout real signing, published Nostr events will be rejected by relays. This is the only functional gap blocking full Nostr support.",
+  "idea_hash": "4afced732dab",
+  "writer_backend": "claude",
+  "reviewer_backend": "codex",
+  "started_at": "2026-03-05T04:01:17Z",
+  "completed_at": "2026-03-05T04:07:25Z",
+  "revision_count": 1,
+  "approved": false,
+  "draft_time_secs": 61.180674771,
+  "review_times_secs": [
+    221.91296519
+  ],
+  "revision_times_secs": [
+    84.846239795
+  ]
+}

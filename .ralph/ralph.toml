@@ -1,0 +1,5 @@
+
+# ralph workspace configuration
+# The defaults are loaded from built-in values in the application and shown here
+# for convenience so this file remains intentionally minimal.
+[workspace]
