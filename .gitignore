@@ -19,7 +19,8 @@ config.toml
 
 # Claude / opencode / agent caches
 /.agent/
-/.ralph/
+/.ralph/tmp/
+/.ralph/daemon/
 /.claude/
 /.claude.json
 
