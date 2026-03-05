@@ -30,3 +30,6 @@ config.toml
 
 # Logs
 *.log
+
+# Runtime databases
+*.sqlite
