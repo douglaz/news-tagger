@@ -39,6 +39,9 @@
             cargo-outdated
             cargo-audit
 
+            # GitHub CLI
+            gh
+
             # Optional: for Ralph/Codex workflow
             nodejs_22
           ];
