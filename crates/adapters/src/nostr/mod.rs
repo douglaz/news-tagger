@@ -22,8 +22,9 @@ pub fn parse_secret_key(raw: &str) -> Result<SigningKey> {
         bail!("Nostr secret key is empty");
     }
 
-    let secret_bytes = if trimmed.starts_with('n') && trimmed.contains('1') {
-        parse_nsec_key_bytes(trimmed)?
+    let lower = trimmed.to_ascii_lowercase();
+    let secret_bytes = if lower.starts_with('n') && lower.contains('1') {
+        parse_nsec_key_bytes(&lower)?
     } else {
         parse_hex_key_bytes(trimmed)?
     };
@@ -387,6 +388,20 @@ mod tests {
         let nsec = nsec_from_bytes(&secret_bytes);
 
         let key = parse_secret_key(&nsec).expect("nsec key should parse");
+        let hex_key = parse_secret_key(sample_secret_hex()).expect("hex key should parse");
+
+        assert_eq!(
+            key.verifying_key().to_bytes(),
+            hex_key.verifying_key().to_bytes()
+        );
+    }
+
+    #[test]
+    fn test_parse_secret_key_uppercase_nsec() {
+        let secret_bytes = decode_hex_fixed::<32>(sample_secret_hex()).expect("valid hex");
+        let nsec = nsec_from_bytes(&secret_bytes).to_uppercase();
+
+        let key = parse_secret_key(&nsec).expect("uppercase nsec key should parse");
         let hex_key = parse_secret_key(sample_secret_hex()).expect("hex key should parse");
 
         assert_eq!(
