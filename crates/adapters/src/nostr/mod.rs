@@ -6,7 +6,6 @@ use bech32::Hrp;
 use k256::schnorr::SigningKey;
 use news_tagger_domain::{PublishError, PublishResult, Publisher, RenderedPost};
 use reqwest::Client;
-use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::time::Duration;
@@ -122,8 +121,8 @@ pub struct NostrPublisher {
 }
 
 impl NostrPublisher {
-    pub fn new(secret_key: SecretString, relays: Vec<String>) -> Result<Self> {
-        let signing_key = parse_secret_key(secret_key.expose_secret())?;
+    pub fn new(secret_key: impl AsRef<str>, relays: Vec<String>) -> Result<Self> {
+        let signing_key = parse_secret_key(secret_key.as_ref())?;
 
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
@@ -297,7 +296,6 @@ mod tests {
     use super::*;
     use bech32::Bech32;
     use k256::schnorr::{Signature, VerifyingKey};
-    use secrecy::SecretString;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -313,8 +311,8 @@ mod tests {
         "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
     }
 
-    fn sample_secret() -> SecretString {
-        SecretString::new(sample_secret_hex().to_string().into())
+    fn sample_secret() -> &'static str {
+        sample_secret_hex()
     }
 
     fn nsec_from_bytes(bytes: &[u8]) -> String {

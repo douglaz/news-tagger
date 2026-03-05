@@ -12,6 +12,7 @@ use news_tagger_domain::{
     Classifier, ProcessResult, Publisher, SystemClock, XPublishMode,
     usecases::{ClassifyConfig, RenderConfig, RunLoop, RunLoopConfig},
 };
+use secrecy::ExposeSecret;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -229,7 +230,7 @@ fn build_nostr_publisher(config: &AppConfig, dry_run: bool) -> Result<NostrPubli
     }
 
     let secret_key = load_api_key(&config.nostr.secret_key_env, "nostr")?;
-    NostrPublisher::new(secret_key, config.nostr.relays.clone())
+    NostrPublisher::new(secret_key.expose_secret(), config.nostr.relays.clone())
 }
 
 fn parse_x_publish_mode(mode: &str) -> Result<XPublishMode> {
