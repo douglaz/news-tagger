@@ -276,3 +276,64 @@ fn get_input_text(args: &ClassifyArgs) -> Result<String> {
         .context("Failed to read from stdin")?;
     Ok(text)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use news_tagger_domain::{ClassifyError, ClassifyInput, SourcePost, TagDefinition};
+    use time::OffsetDateTime;
+
+    fn make_input() -> ClassifyInput {
+        ClassifyInput {
+            post: SourcePost {
+                id: "1".to_string(),
+                text: "test post".to_string(),
+                author: "tester".to_string(),
+                url: String::new(),
+                created_at: OffsetDateTime::now_utc(),
+                is_repost: false,
+                is_reply: false,
+                reply_to_id: None,
+            },
+            definitions: vec![TagDefinition {
+                id: "test_tag".to_string(),
+                title: "Test Tag".to_string(),
+                short: None,
+                aliases: vec![],
+                content: "Test definition".to_string(),
+                file_path: "test.md".to_string(),
+            }],
+            max_output_chars: None,
+            policy_text: None,
+        }
+    }
+
+    #[test]
+    fn test_build_classifier_selects_codex_provider_and_returns_ok() {
+        let mut config = AppConfig::default();
+        config.llm.provider = "codex".to_string();
+        config.llm.codex.command = "codex-custom".to_string();
+        config.llm.codex.args = vec!["exec".to_string(), "-".to_string()];
+
+        let classifier = build_classifier(&config);
+        assert!(classifier.is_ok());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_build_classifier_honors_codex_timeout_override() {
+        let mut config = AppConfig::default();
+        config.llm.provider = "codex".to_string();
+        config.llm.timeout_secs = 30;
+        config.llm.codex.timeout_secs = Some(1);
+        config.llm.codex.command = "sh".to_string();
+        config.llm.codex.args = vec![
+            "-c".to_string(),
+            "sleep 2; printf '{\"version\":\"1\",\"summary\":\"late\",\"tags\":[]}'".to_string(),
+        ];
+
+        let classifier = build_classifier(&config).unwrap();
+        let err = classifier.classify(make_input()).await.unwrap_err();
+        assert!(matches!(err, ClassifyError::Timeout));
+    }
+}
