@@ -47,14 +47,16 @@
           ];
 
           shellHook = ''
-            echo "news-tagger development shell"
-            echo "Rust: $(rustc --version)"
-            echo ""
-            echo "Commands:"
-            echo "  cargo test           - Run all tests"
-            echo "  cargo fmt --all      - Format code"
-            echo "  cargo clippy --all-targets --all-features -D warnings"
-            echo "  cargo run -- --help  - Show CLI help"
+            if [ -d .git ] && [ -d .githooks ]; then
+              current_hooks_path=$(git config core.hooksPath || echo "")
+              if [ "$current_hooks_path" != ".githooks" ]; then
+                git config core.hooksPath .githooks
+                echo "Git hooks configured (.githooks)"
+                echo "  pre-commit: cargo fmt --check"
+                echo "  pre-push:   cargo fmt + clippy + tests"
+                echo "  Disable: git config --unset core.hooksPath"
+              fi
+            fi
           '';
 
           RUST_BACKTRACE = "1";
