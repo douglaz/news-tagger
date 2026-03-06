@@ -191,6 +191,7 @@ pub struct AccountState {
 pub enum ProcessResult {
     /// Post was classified and published
     Published {
+        source_post: Box<SourcePost>,
         classification: ClassifyOutput,
         x_post_id: Option<String>,
         nostr_event_id: Option<String>,

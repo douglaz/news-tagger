@@ -55,6 +55,10 @@ pub struct RunArgs {
     /// Path to outbox file (used with --require-approval)
     #[arg(long)]
     pub outbox: Option<PathBuf>,
+
+    /// Output full classification results as JSON (use with --once)
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Args, Debug)]

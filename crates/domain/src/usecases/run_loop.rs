@@ -324,6 +324,7 @@ where
                 "[DRY RUN] Would publish"
             );
             return ProcessResult::Published {
+                source_post: Box::new(post.clone()),
                 classification,
                 x_post_id: None,
                 nostr_event_id: None,
@@ -376,6 +377,7 @@ where
         }
 
         ProcessResult::Published {
+            source_post: Box::new(post.clone()),
             classification,
             x_post_id,
             nostr_event_id,

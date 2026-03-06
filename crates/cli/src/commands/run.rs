@@ -13,6 +13,7 @@ use news_tagger_domain::{
     usecases::{ClassifyConfig, RenderConfig, RunLoop, RunLoopConfig},
 };
 use secrecy::ExposeSecret;
+use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -142,9 +143,12 @@ pub async fn execute(args: RunArgs, config_path: Option<PathBuf>) -> Result<()> 
         let results = run_loop.poll_once().await?;
         tracing::info!(processed = results.len(), "Poll cycle complete");
 
+        let mut json_results: Vec<JsonResult> = Vec::new();
+
         for (post_id, result) in results {
             match result {
                 ProcessResult::Published {
+                    source_post,
                     classification,
                     x_post_id,
                     nostr_event_id,
@@ -156,6 +160,15 @@ pub async fn execute(args: RunArgs, config_path: Option<PathBuf>) -> Result<()> 
                         nostr_event_id = ?nostr_event_id,
                         "Published"
                     );
+                    if args.json {
+                        json_results.push(JsonResult {
+                            post_id,
+                            author: source_post.author,
+                            text: source_post.text,
+                            url: source_post.url,
+                            classification,
+                        });
+                    }
                 }
                 ProcessResult::Skipped { reason } => {
                     tracing::debug!(post_id = %post_id, reason = %reason, "Skipped");
@@ -164,6 +177,12 @@ pub async fn execute(args: RunArgs, config_path: Option<PathBuf>) -> Result<()> 
                     tracing::error!(post_id = %post_id, error = %error, "Failed");
                 }
             }
+        }
+
+        if args.json {
+            let json = serde_json::to_string_pretty(&json_results)
+                .context("Failed to serialize results")?;
+            println!("{}", json);
         }
     } else {
         // Continuous polling loop
@@ -262,4 +281,13 @@ fn rate_limit_from_config(value: u32) -> Option<u32> {
 
 fn default_outbox_path() -> PathBuf {
     PathBuf::from("./outbox.jsonl")
+}
+
+#[derive(Serialize)]
+struct JsonResult {
+    post_id: String,
+    author: String,
+    text: String,
+    url: String,
+    classification: news_tagger_domain::ClassifyOutput,
 }
