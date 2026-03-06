@@ -1,0 +1,29 @@
+{
+  "approved": false,
+  "issues": [
+    {
+      "area": "Feasibility - Key Parsing Lifecycle",
+      "feedback": "The spec parses the key in `NostrPublisher::new` but does not define failure behavior for invalid keys. `new` is currently infallible and used by CLI as such; either `new` must return `Result` (which affects callers) or publish-time error behavior must be explicitly specified and tested."
+    },
+    {
+      "area": "Crypto API Correctness",
+      "feedback": "The proposed `k256::schnorr::SigningKey::sign_raw` / `VerifyingKey::verify_raw` usage is underspecified and likely incorrect as written (aux randomness/input shape). Specify the exact k256 API and nonce strategy so implementation compiles and is deterministic where required."
+    },
+    {
+      "area": "Test Determinism",
+      "feedback": "Acceptance requires deterministic vector checks, but `create_event` currently uses `OffsetDateTime::now_utc()`. The spec needs an explicit mechanism to fix `created_at` in tests (e.g., helper with injected timestamp) or deterministic `id`/`sig` assertions will be flaky/impossible."
+    },
+    {
+      "area": "Completeness - Relay Publish Path",
+      "feedback": "Criterion 4 claims relay acceptance, but current transport logic is still non-standard for Nostr relays and serializes `EVENT` as `[\"EVENT\", \"<json string>\"]` instead of an object payload. Even with valid signatures, relay rejection can still occur; this must be addressed or explicitly excluded from scope."
+    },
+    {
+      "area": "Scope Clarity",
+      "feedback": "Acceptance criterion 7 says no changes outside adapters, but the spec requires workspace-root `Cargo.toml` edits. Clarify that root manifest updates are allowed while domain/CLI logic stays unchanged."
+    },
+    {
+      "area": "Edge Cases - Secret Format Handling",
+      "feedback": "The spec should explicitly require trimming whitespace and validating bech32 HRP (`nsec`) plus exact 32-byte payload length. Without this, malformed env values can pass initial checks and fail unpredictably."
+    }
+  ]
+}

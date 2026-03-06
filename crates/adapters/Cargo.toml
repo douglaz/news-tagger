@@ -35,6 +35,8 @@ sqlx = { workspace = true }
 
 # Crypto
 sha2 = { workspace = true }
+k256 = { workspace = true }
+bech32 = { workspace = true }
 
 # Secrets
 secrecy = { workspace = true }

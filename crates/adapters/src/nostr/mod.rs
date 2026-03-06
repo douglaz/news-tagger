@@ -1,86 +1,193 @@
 //! Nostr publishing adapter
 
+use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
+use bech32::Hrp;
+use k256::schnorr::SigningKey;
 use news_tagger_domain::{PublishError, PublishResult, Publisher, RenderedPost};
 use reqwest::Client;
-use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 use time::OffsetDateTime;
 
+const NOSTR_TEXT_NOTE_KIND: u32 = 1;
+const SCHNORR_ZERO_AUX_RANDOMNESS: [u8; 32] = [0; 32];
+
+/// Parse a Nostr secret key from either hex or `nsec` Bech32 format.
+pub fn parse_secret_key(raw: &str) -> Result<SigningKey> {
+    let trimmed = raw.trim();
+
+    if trimmed.is_empty() {
+        bail!("Nostr secret key is empty");
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    let secret_bytes = if lower.starts_with('n') && lower.contains('1') {
+        parse_nsec_key_bytes(&lower)?
+    } else {
+        parse_hex_key_bytes(trimmed)?
+    };
+
+    SigningKey::from_bytes(&secret_bytes).map_err(|_| {
+        anyhow!("Invalid Nostr secret key scalar (must be non-zero and < curve order)")
+    })
+}
+
+fn parse_nsec_key_bytes(raw: &str) -> Result<[u8; 32]> {
+    let (hrp, data) =
+        bech32::decode(raw).map_err(|e| anyhow!("Invalid nsec Bech32 encoding: {}", e))?;
+
+    if hrp != Hrp::parse("nsec")? {
+        bail!(
+            "Invalid nsec human-readable part: expected 'nsec', got '{}'",
+            hrp
+        );
+    }
+
+    if data.len() != 32 {
+        bail!(
+            "Invalid nsec payload length: expected 32 bytes, got {}",
+            data.len()
+        );
+    }
+
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&data);
+    Ok(bytes)
+}
+
+fn parse_hex_key_bytes(raw: &str) -> Result<[u8; 32]> {
+    if raw.len() != 64 {
+        bail!(
+            "Invalid hex secret key length: expected 64 characters, got {}",
+            raw.len()
+        );
+    }
+
+    if !raw.chars().all(|c| c.is_ascii_hexdigit()) {
+        bail!("Invalid hex secret key: contains non-hex characters");
+    }
+
+    let mut bytes = [0u8; 32];
+    for (idx, chunk) in raw.as_bytes().chunks_exact(2).enumerate() {
+        let hex_pair = std::str::from_utf8(chunk)
+            .map_err(|_| anyhow!("Invalid hex secret key: contains invalid UTF-8"))?;
+
+        bytes[idx] = u8::from_str_radix(hex_pair, 16)
+            .map_err(|_| anyhow!("Invalid hex secret key: failed to decode at byte {}", idx))?;
+    }
+
+    Ok(bytes)
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+
+    output
+}
+
+#[cfg(test)]
+fn decode_hex_fixed<const N: usize>(raw: &str) -> Result<[u8; N]> {
+    if raw.len() != N * 2 {
+        bail!("Expected {} hex characters, got {}", N * 2, raw.len());
+    }
+
+    if !raw.chars().all(|c| c.is_ascii_hexdigit()) {
+        bail!("Input contains non-hex characters");
+    }
+
+    let mut bytes = [0u8; N];
+    for (idx, chunk) in raw.as_bytes().chunks_exact(2).enumerate() {
+        let hex_pair = std::str::from_utf8(chunk).map_err(|_| anyhow!("Invalid UTF-8"))?;
+        bytes[idx] =
+            u8::from_str_radix(hex_pair, 16).map_err(|_| anyhow!("Invalid hex at byte {}", idx))?;
+    }
+
+    Ok(bytes)
+}
+
 /// Nostr publisher for creating notes
 pub struct NostrPublisher {
     client: Client,
-    secret_key: SecretString,
+    signing_key: Option<SigningKey>,
     relays: Vec<String>,
     enabled: bool,
 }
 
 impl NostrPublisher {
-    pub fn new(secret_key: SecretString, relays: Vec<String>) -> Self {
+    pub fn new(secret_key: impl AsRef<str>, relays: Vec<String>) -> Result<Self> {
+        let signing_key = parse_secret_key(secret_key.as_ref())?;
+
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
-            .expect("Failed to build HTTP client");
+            .map_err(|e| anyhow!("Failed to build HTTP client: {}", e))?;
 
-        Self {
+        Ok(Self {
             client,
-            secret_key,
+            signing_key: Some(signing_key),
             relays,
             enabled: true,
-        }
+        })
     }
 
     /// Create a disabled publisher (for testing/dry-run)
     pub fn disabled() -> Self {
         Self {
             client: Client::new(),
-            secret_key: SecretString::new("".into()),
+            signing_key: None,
             relays: vec![],
             enabled: false,
         }
     }
 
     /// Generate a Nostr event (NIP-01)
-    fn create_event(&self, content: &str) -> NostrEvent {
-        let created_at = OffsetDateTime::now_utc().unix_timestamp();
+    fn create_event(&self, content: &str, created_at: i64) -> Result<NostrEvent> {
+        let pubkey = self.derive_pubkey()?;
+        let tags: Vec<Vec<String>> = vec![];
 
-        // For a real implementation, we'd need proper secp256k1 signing
-        // This is a placeholder that shows the structure
-        let pubkey = self.derive_pubkey();
+        let serialized =
+            serde_json::to_string(&(0, &pubkey, created_at, NOSTR_TEXT_NOTE_KIND, &tags, content))
+                .map_err(|e| anyhow!("Failed to canonicalize Nostr event: {}", e))?;
 
-        let event_data = format!(
-            "[0,\"{}\",{},1,[],\"{}\"]",
-            pubkey,
-            created_at,
-            content.replace('\"', "\\\"").replace('\n', "\\n")
-        );
+        let id_bytes: [u8; 32] = Sha256::digest(serialized.as_bytes()).into();
+        let id = hex_encode(&id_bytes);
 
-        let mut hasher = Sha256::new();
-        hasher.update(event_data.as_bytes());
-        let id = format!("{:x}", hasher.finalize());
+        let signing_key = self
+            .signing_key
+            .as_ref()
+            .ok_or_else(|| anyhow!("Nostr publisher is disabled"))?;
 
-        // Placeholder signature - real implementation needs secp256k1
-        let sig = "placeholder_signature".to_string();
+        let signature = signing_key
+            .sign_prehash_with_aux_rand(&id_bytes, &SCHNORR_ZERO_AUX_RANDOMNESS)
+            .map_err(|e| anyhow!("Failed to sign Nostr event: {}", e))?;
 
-        NostrEvent {
+        Ok(NostrEvent {
             id,
             pubkey,
             created_at,
-            kind: 1, // Text note
-            tags: vec![],
+            kind: NOSTR_TEXT_NOTE_KIND,
+            tags,
             content: content.to_string(),
-            sig,
-        }
+            sig: hex_encode(&signature.to_bytes()),
+        })
     }
 
-    /// Derive public key from secret key (placeholder)
-    fn derive_pubkey(&self) -> String {
-        // Real implementation would use secp256k1
-        let mut hasher = Sha256::new();
-        hasher.update(self.secret_key.expose_secret().as_bytes());
-        format!("{:x}", hasher.finalize())
+    /// Derive x-only public key from secret key
+    fn derive_pubkey(&self) -> Result<String> {
+        let signing_key = self
+            .signing_key
+            .as_ref()
+            .ok_or_else(|| anyhow!("Nostr publisher is disabled"))?;
+
+        Ok(hex_encode(&signing_key.verifying_key().to_bytes()))
     }
 
     /// Publish event to a relay via HTTP (NIP-86 or relay-specific HTTP endpoint)
@@ -141,7 +248,10 @@ impl Publisher for NostrPublisher {
             return Err(PublishError::Api("No relays configured".to_string()));
         }
 
-        let event = self.create_event(&post.text);
+        let created_at = OffsetDateTime::now_utc().unix_timestamp();
+        let event = self
+            .create_event(&post.text, created_at)
+            .map_err(|e| PublishError::Api(format!("Failed to create Nostr event: {}", e)))?;
         let event_id = event.id.clone();
 
         // Try to publish to at least one relay
@@ -185,6 +295,8 @@ impl Publisher for NostrPublisher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bech32::Bech32;
+    use k256::schnorr::{Signature, VerifyingKey};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -194,6 +306,19 @@ mod tests {
             source_post_id: "123".to_string(),
             source_post_url: "https://x.com/user/status/123".to_string(),
         }
+    }
+
+    fn sample_secret_hex() -> &'static str {
+        "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    }
+
+    fn sample_secret() -> &'static str {
+        sample_secret_hex()
+    }
+
+    fn nsec_from_bytes(bytes: &[u8]) -> String {
+        bech32::encode::<Bech32>(Hrp::parse("nsec").expect("valid hrp"), bytes)
+            .expect("valid bech32 encoding")
     }
 
     #[tokio::test]
@@ -209,7 +334,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_relays_configured() {
-        let publisher = NostrPublisher::new(SecretString::new("test-secret-key".into()), vec![]);
+        let publisher = NostrPublisher::new(sample_secret(), vec![]).expect("valid publisher");
 
         let result = publisher.publish(&sample_post()).await;
         assert!(matches!(result, Err(PublishError::Api(_))));
@@ -227,25 +352,202 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let publisher = NostrPublisher::new(
-            SecretString::new("test-secret-key".into()),
-            vec![mock_server.uri()],
-        );
+        let publisher =
+            NostrPublisher::new(sample_secret(), vec![mock_server.uri()]).expect("valid publisher");
 
         let result = publisher.publish(&sample_post()).await.unwrap();
 
-        assert!(!result.id.is_empty());
+        assert_eq!(result.id.len(), 64);
     }
 
-    #[tokio::test]
-    async fn test_create_event() {
-        let publisher = NostrPublisher::new(SecretString::new("test-secret-key".into()), vec![]);
+    #[test]
+    fn test_create_event() {
+        let publisher = NostrPublisher::new(sample_secret(), vec![]).expect("valid publisher");
 
-        let event = publisher.create_event("Test content");
+        let event = publisher
+            .create_event("Test content", 1_704_000_000)
+            .expect("event creation should succeed");
 
-        assert!(!event.id.is_empty());
-        assert!(!event.pubkey.is_empty());
+        assert_eq!(event.id.len(), 64);
+        assert_eq!(event.pubkey.len(), 64);
+        assert_eq!(event.sig.len(), 128);
         assert_eq!(event.kind, 1);
         assert_eq!(event.content, "Test content");
+    }
+
+    #[test]
+    fn test_parse_secret_key_hex() {
+        let key = parse_secret_key(sample_secret_hex()).expect("hex key should parse");
+
+        assert_eq!(key.verifying_key().to_bytes().len(), 32);
+    }
+
+    #[test]
+    fn test_parse_secret_key_nsec() {
+        let secret_bytes = decode_hex_fixed::<32>(sample_secret_hex()).expect("valid hex");
+        let nsec = nsec_from_bytes(&secret_bytes);
+
+        let key = parse_secret_key(&nsec).expect("nsec key should parse");
+        let hex_key = parse_secret_key(sample_secret_hex()).expect("hex key should parse");
+
+        assert_eq!(
+            key.verifying_key().to_bytes(),
+            hex_key.verifying_key().to_bytes()
+        );
+    }
+
+    #[test]
+    fn test_parse_secret_key_uppercase_nsec() {
+        let secret_bytes = decode_hex_fixed::<32>(sample_secret_hex()).expect("valid hex");
+        let nsec = nsec_from_bytes(&secret_bytes).to_uppercase();
+
+        let key = parse_secret_key(&nsec).expect("uppercase nsec key should parse");
+        let hex_key = parse_secret_key(sample_secret_hex()).expect("hex key should parse");
+
+        assert_eq!(
+            key.verifying_key().to_bytes(),
+            hex_key.verifying_key().to_bytes()
+        );
+    }
+
+    #[test]
+    fn test_parse_secret_key_hex_and_nsec_equivalence() {
+        let secret_bytes = decode_hex_fixed::<32>(sample_secret_hex()).expect("valid hex");
+        let nsec = nsec_from_bytes(&secret_bytes);
+
+        let hex_key = parse_secret_key(sample_secret_hex()).expect("hex key should parse");
+        let nsec_key = parse_secret_key(&nsec).expect("nsec key should parse");
+
+        assert_eq!(
+            hex_key.verifying_key().to_bytes(),
+            nsec_key.verifying_key().to_bytes()
+        );
+    }
+
+    #[test]
+    fn test_parse_secret_key_invalid_matrix() {
+        let valid_secret_bytes = decode_hex_fixed::<32>(sample_secret_hex()).expect("valid hex");
+
+        let mut short_payload = [0u8; 31];
+        short_payload.copy_from_slice(&valid_secret_bytes[..31]);
+
+        let mut long_payload = [0u8; 33];
+        long_payload[..32].copy_from_slice(&valid_secret_bytes);
+        long_payload[32] = 0x42;
+
+        let cases = vec![
+            ("".to_string(), "empty"),
+            ("a".repeat(63), "length"),
+            ("a".repeat(65), "length"),
+            ("g".repeat(64), "non-hex"),
+            (
+                bech32::encode::<Bech32>(
+                    Hrp::parse("npub").expect("valid hrp"),
+                    &valid_secret_bytes,
+                )
+                .expect("valid bech32"),
+                "human-readable part",
+            ),
+            (nsec_from_bytes(&short_payload), "payload length"),
+            (nsec_from_bytes(&long_payload), "payload length"),
+            (
+                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+                "scalar",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let err = match parse_secret_key(&input) {
+                Ok(_) => panic!("input should be rejected"),
+                Err(err) => err,
+            };
+            assert!(
+                err.to_string().to_lowercase().contains(expected),
+                "error '{}' should contain '{}' for input '{}'",
+                err,
+                expected,
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_event_fields_are_consistent() {
+        let publisher = NostrPublisher::new(sample_secret(), vec![]).expect("valid publisher");
+
+        let event = publisher
+            .create_event("hello nostr", 1_700_000_000)
+            .expect("event creation should succeed");
+
+        let serialized = serde_json::to_string(&(
+            0,
+            &event.pubkey,
+            event.created_at,
+            event.kind,
+            &event.tags,
+            &event.content,
+        ))
+        .expect("event canonical serialization");
+
+        let expected_id = hex_encode(&Sha256::digest(serialized.as_bytes()));
+        assert_eq!(event.id, expected_id);
+
+        let pubkey_bytes = decode_hex_fixed::<32>(&event.pubkey).expect("valid pubkey hex");
+        let id_bytes = decode_hex_fixed::<32>(&event.id).expect("valid id hex");
+        let sig_bytes = decode_hex_fixed::<64>(&event.sig).expect("valid sig hex");
+
+        let verifying_key = VerifyingKey::from_bytes(&pubkey_bytes).expect("valid pubkey");
+        let signature = Signature::try_from(sig_bytes.as_slice()).expect("valid signature");
+
+        use k256::schnorr::signature::hazmat::PrehashVerifier;
+        verifying_key
+            .verify_prehash(&id_bytes, &signature)
+            .expect("signature should verify against event id");
+    }
+
+    #[test]
+    fn test_json_escaping_canonicalization() {
+        let publisher = NostrPublisher::new(sample_secret(), vec![]).expect("valid publisher");
+        let content = "Quote: \"hello\"\\nPath: C:\\\\tmp\\\\file\\nUnicode: café";
+
+        let event = publisher
+            .create_event(content, 1_700_000_111)
+            .expect("event creation should succeed");
+
+        let serialized = serde_json::to_string(&(
+            0,
+            &event.pubkey,
+            event.created_at,
+            event.kind,
+            &event.tags,
+            &event.content,
+        ))
+        .expect("event canonical serialization");
+
+        let expected_id = hex_encode(&Sha256::digest(serialized.as_bytes()));
+        assert_eq!(event.id, expected_id);
+    }
+
+    #[test]
+    fn test_bip340_reference_vector_0() {
+        // Official test vector index 0 from BIP-340.
+        // Source: https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv
+        let signing_key =
+            parse_secret_key("0000000000000000000000000000000000000000000000000000000000000003")
+                .expect("reference key should parse");
+
+        let expected_pubkey = "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+        let expected_sig = "e907831f80848d1069a5371b402410364bdf1c5f8307b0084c55f1ce2dca821525f66a4a85ea8b71e482a74f382d2ce5ebeee8fdb2172f477df4900d310536c0";
+
+        let message = [0u8; 32];
+        let signature = signing_key
+            .sign_raw(&message, &SCHNORR_ZERO_AUX_RANDOMNESS)
+            .expect("reference signature should be computable");
+
+        assert_eq!(
+            hex_encode(&signing_key.verifying_key().to_bytes()),
+            expected_pubkey
+        );
+        assert_eq!(hex_encode(&signature.to_bytes()), expected_sig);
     }
 }
