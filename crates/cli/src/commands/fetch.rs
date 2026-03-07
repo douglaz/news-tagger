@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use news_tagger_adapters::x::XPostSource;
-use news_tagger_domain::{PostSource, SourcePost};
+use news_tagger_domain::{PostSource, SourcePost, compare_post_ids};
 use std::path::PathBuf;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
@@ -117,7 +117,7 @@ fn load_max_ids_per_account(path: &PathBuf) -> std::collections::HashMap<String,
             if cursor._cursor {
                 let key = cursor.account.to_ascii_lowercase();
                 let entry = max_ids.entry(key).or_insert_with(String::new);
-                if cursor.max_id.as_str() > entry.as_str() {
+                if compare_post_ids(&cursor.max_id, entry).is_gt() {
                     *entry = cursor.max_id;
                 }
                 continue;
@@ -127,10 +127,30 @@ fn load_max_ids_per_account(path: &PathBuf) -> std::collections::HashMap<String,
         if let Ok(post) = serde_json::from_str::<SourcePost>(line) {
             let key = post.author.to_ascii_lowercase();
             let entry = max_ids.entry(key).or_insert_with(String::new);
-            if post.id.as_str() > entry.as_str() {
+            if compare_post_ids(&post.id, entry).is_gt() {
                 *entry = post.id;
             }
         }
     }
     max_ids
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_max_ids_per_account_uses_numeric_id_ordering() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("collected.jsonl");
+        let lines = [
+            r#"{"_cursor":true,"account":"Alice","max_id":"9"}"#,
+            r#"{"_cursor":true,"account":"alice","max_id":"10"}"#,
+        ]
+        .join("\n");
+        std::fs::write(&path, format!("{}\n", lines)).unwrap();
+
+        let max_ids = load_max_ids_per_account(&path);
+        assert_eq!(max_ids.get("alice").map(String::as_str), Some("10"));
+    }
 }

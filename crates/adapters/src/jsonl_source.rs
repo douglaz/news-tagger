@@ -1,7 +1,7 @@
 //! JSONL file-based post source adapter
 
 use async_trait::async_trait;
-use news_tagger_domain::{PostSource, PostSourceError, SourcePost};
+use news_tagger_domain::{PostSource, PostSourceError, SourcePost, compare_post_ids};
 use std::path::PathBuf;
 
 /// Post source that reads SourcePost entries from a JSONL file
@@ -31,7 +31,7 @@ impl JsonlPostSource {
                 }
             }
         }
-        posts.sort_by(|a, b| a.id.cmp(&b.id));
+        posts.sort_by(|a, b| compare_post_ids(&a.id, &b.id));
         Ok(posts)
     }
 }
@@ -47,8 +47,49 @@ impl PostSource for JsonlPostSource {
         let filtered: Vec<SourcePost> = posts
             .into_iter()
             .filter(|p| account == "*" || p.author.eq_ignore_ascii_case(account))
-            .filter(|p| since_id.map(|sid| p.id.as_str() > sid).unwrap_or(true))
+            .filter(|p| {
+                since_id
+                    .map(|sid| compare_post_ids(&p.id, sid).is_gt())
+                    .unwrap_or(true)
+            })
             .collect();
         Ok(filtered)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::OffsetDateTime;
+
+    fn make_post(id: &str, author: &str) -> SourcePost {
+        SourcePost {
+            id: id.to_string(),
+            text: "text".to_string(),
+            author: author.to_string(),
+            url: "https://example.com".to_string(),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            is_repost: false,
+            is_reply: false,
+            reply_to_id: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_posts_uses_numeric_id_ordering_for_since_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("posts.jsonl");
+        let lines = [
+            serde_json::to_string(&make_post("9", "alice")).unwrap(),
+            serde_json::to_string(&make_post("10", "alice")).unwrap(),
+        ]
+        .join("\n");
+        std::fs::write(&file_path, format!("{}\n", lines)).unwrap();
+
+        let source = JsonlPostSource::new(vec![file_path]);
+        let posts = source.fetch_posts("alice", Some("9")).await.unwrap();
+
+        assert_eq!(posts.len(), 1);
+        assert_eq!(posts[0].id, "10");
     }
 }
