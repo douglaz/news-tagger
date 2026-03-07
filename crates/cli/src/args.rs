@@ -25,6 +25,9 @@ pub enum Commands {
     /// Watch accounts, classify posts, and publish results
     Run(RunArgs),
 
+    /// Fetch posts from accounts and save as JSONL (no classification)
+    Fetch(FetchArgs),
+
     /// One-shot classification of text
     Classify(ClassifyArgs),
 
@@ -59,6 +62,21 @@ pub struct RunArgs {
     /// Output full classification results as JSON (use with --once)
     #[arg(long)]
     pub json: bool,
+
+    /// Use a JSONL file as post source instead of X API
+    #[arg(long)]
+    pub source: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct FetchArgs {
+    /// Output JSONL file path
+    #[arg(long, default_value = "./collected.jsonl")]
+    pub output: PathBuf,
+
+    /// Override accounts to fetch (comma-separated)
+    #[arg(long, value_delimiter = ',')]
+    pub accounts: Option<Vec<String>>,
 }
 
 #[derive(Args, Debug)]

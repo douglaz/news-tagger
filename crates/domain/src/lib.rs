@@ -15,6 +15,33 @@ pub use model::*;
 pub use ports::*;
 
 use sha2::{Digest, Sha256};
+use std::cmp::Ordering;
+
+/// Compare post IDs while handling decimal numeric IDs safely.
+///
+/// If both IDs contain only ASCII digits, compares by numeric value without parsing
+/// (length first, then lexicographic), which works for arbitrarily large values.
+/// Otherwise falls back to plain lexicographic comparison.
+pub fn compare_post_ids(a: &str, b: &str) -> Ordering {
+    let a_is_digits = a.as_bytes().iter().all(|byte| byte.is_ascii_digit());
+    let b_is_digits = b.as_bytes().iter().all(|byte| byte.is_ascii_digit());
+
+    if a_is_digits && b_is_digits {
+        let a_norm = normalize_numeric_id(a);
+        let b_norm = normalize_numeric_id(b);
+        return a_norm
+            .len()
+            .cmp(&b_norm.len())
+            .then_with(|| a_norm.cmp(b_norm));
+    }
+
+    a.cmp(b)
+}
+
+fn normalize_numeric_id(id: &str) -> &str {
+    let trimmed = id.trim_start_matches('0');
+    if trimmed.is_empty() { "0" } else { trimmed }
+}
 
 /// Compute a deterministic hash of a set of tag definitions
 /// Used for idempotency checks
@@ -29,4 +56,29 @@ pub fn compute_taxonomy_hash(definitions: &[TagDefinition]) -> String {
         hasher.update(def.file_path.as_bytes());
     }
     format!("{:x}", hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compare_numeric_ids_by_value() {
+        assert_eq!(compare_post_ids("9", "10"), Ordering::Less);
+        assert_eq!(compare_post_ids("99", "100"), Ordering::Less);
+        assert_eq!(compare_post_ids("123", "45"), Ordering::Greater);
+    }
+
+    #[test]
+    fn compare_numeric_ids_with_leading_zeros() {
+        assert_eq!(compare_post_ids("0009", "10"), Ordering::Less);
+        assert_eq!(compare_post_ids("0010", "10"), Ordering::Equal);
+        assert_eq!(compare_post_ids("0", "0000"), Ordering::Equal);
+    }
+
+    #[test]
+    fn compare_non_numeric_ids_lexicographically() {
+        assert_eq!(compare_post_ids("tweet1", "tweet2"), Ordering::Less);
+        assert_eq!(compare_post_ids("abc", "100"), Ordering::Greater);
+    }
 }

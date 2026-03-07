@@ -21,6 +21,7 @@ async fn main() -> Result<()> {
     // Execute command
     match cli.command {
         Commands::Run(args) => commands::run::execute(args, cli.config).await,
+        Commands::Fetch(args) => commands::fetch::execute(args, cli.config).await,
         Commands::Classify(args) => commands::classify::execute(args, cli.config).await,
         Commands::Definitions(args) => commands::definitions::execute(args, cli.config).await,
         Commands::Config(args) => commands::config::execute(args).await,

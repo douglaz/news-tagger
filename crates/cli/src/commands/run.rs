@@ -3,13 +3,14 @@
 use anyhow::{Context, Result, bail};
 use news_tagger_adapters::{
     definitions::FilesystemDefinitionsRepo,
+    jsonl::JsonlPostSource,
     nostr::NostrPublisher,
     outbox::{OutboxPublisher, OutboxWriter},
     state::SqliteStateStore,
     x::{XPostSource, XPublisher},
 };
 use news_tagger_domain::{
-    Classifier, ProcessResult, Publisher, SystemClock, XPublishMode,
+    Classifier, PostSource, ProcessResult, Publisher, SystemClock, XPublishMode,
     usecases::{ClassifyConfig, RenderConfig, RunLoop, RunLoopConfig},
 };
 use secrecy::ExposeSecret;
@@ -64,7 +65,11 @@ pub async fn execute(args: RunArgs, config_path: Option<PathBuf>) -> Result<()> 
             .context("Failed to initialize SQLite state store")?,
     );
 
-    let post_source = Arc::new(build_post_source(&config)?);
+    let post_source: Arc<dyn PostSource> = if let Some(ref source_path) = args.source {
+        Arc::new(JsonlPostSource::new(vec![source_path.clone()]))
+    } else {
+        Arc::new(build_post_source(&config)?)
+    };
     let classifier: Arc<dyn Classifier> = Arc::from(build_classifier(&config)?);
 
     let x_mode = parse_x_publish_mode(&config.x.write.mode)?;
@@ -108,8 +113,13 @@ pub async fn execute(args: RunArgs, config_path: Option<PathBuf>) -> Result<()> 
     let clock = Arc::new(SystemClock);
 
     // Build run loop configuration
+    let accounts = if args.source.is_some() && config.watch.accounts.is_empty() {
+        vec!["*".to_string()]
+    } else {
+        config.watch.accounts.clone()
+    };
     let loop_config = RunLoopConfig {
-        accounts: config.watch.accounts.clone(),
+        accounts,
         include_replies: config.watch.include_replies,
         include_reposts: config.watch.include_reposts,
         ignore_patterns: config.watch.ignore_patterns.clone(),

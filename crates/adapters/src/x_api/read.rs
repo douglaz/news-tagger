@@ -1,7 +1,7 @@
 //! X API read adapter for fetching posts
 
 use async_trait::async_trait;
-use news_tagger_domain::{PostSource, PostSourceError, SourcePost};
+use news_tagger_domain::{PostSource, PostSourceError, SourcePost, compare_post_ids};
 use reqwest::Client;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
@@ -232,7 +232,7 @@ impl PostSource for XPostSource {
         let mut posts = self.fetch_user_tweets(&user_id, account, since_id).await?;
 
         // Sort by ID (which is chronological) ascending
-        posts.sort_by(|a, b| a.id.cmp(&b.id));
+        posts.sort_by(|a, b| compare_post_ids(&a.id, &b.id));
 
         tracing::info!(account = %account, count = posts.len(), "Fetched posts");
 
