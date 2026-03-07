@@ -20,20 +20,15 @@ impl JsonlPostSource {
             let content = std::fs::read_to_string(path).map_err(|e| {
                 PostSourceError::Api(format!("Failed to read {}: {}", path.display(), e))
             })?;
-            for (i, line) in content.lines().enumerate() {
+            for line in content.lines() {
                 let line = line.trim();
                 if line.is_empty() {
                     continue;
                 }
-                let post: SourcePost = serde_json::from_str(line).map_err(|e| {
-                    PostSourceError::Api(format!(
-                        "Failed to parse line {} in {}: {}",
-                        i + 1,
-                        path.display(),
-                        e
-                    ))
-                })?;
-                posts.push(post);
+                // Skip non-SourcePost lines (e.g. cursor entries from fetch)
+                if let Ok(post) = serde_json::from_str::<SourcePost>(line) {
+                    posts.push(post);
+                }
             }
         }
         posts.sort_by(|a, b| a.id.cmp(&b.id));
