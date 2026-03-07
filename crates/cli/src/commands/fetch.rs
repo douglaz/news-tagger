@@ -38,7 +38,8 @@ pub async fn execute(args: FetchArgs, config_path: Option<PathBuf>) -> Result<()
     let mut total = 0usize;
 
     for account in &accounts {
-        let since_id = existing_max_ids.get(account.as_str()).map(|s| s.as_str());
+        let account_lower = account.to_ascii_lowercase();
+        let since_id = existing_max_ids.get(&account_lower).map(|s| s.as_str());
 
         tracing::info!(account = %account, since_id = ?since_id, "Fetching posts");
 
@@ -57,6 +58,18 @@ pub async fn execute(args: FetchArgs, config_path: Option<PathBuf>) -> Result<()
                     file.write_all(line.as_bytes()).await?;
                     file.write_all(b"\n").await?;
                     fetched += 1;
+                }
+                // Write a cursor entry so skipped posts still advance the since_id
+                if let Some(last) = posts.last() {
+                    let cursor = SinceIdCursor {
+                        _cursor: true,
+                        account: account.clone(),
+                        max_id: last.id.clone(),
+                    };
+                    let line =
+                        serde_json::to_string(&cursor).context("Failed to serialize cursor")?;
+                    file.write_all(line.as_bytes()).await?;
+                    file.write_all(b"\n").await?;
                 }
                 file.flush().await?;
                 tracing::info!(account = %account, fetched = fetched, "Saved posts");
@@ -77,7 +90,17 @@ pub async fn execute(args: FetchArgs, config_path: Option<PathBuf>) -> Result<()
     Ok(())
 }
 
-/// Scan existing JSONL file to find the max post ID per account (for incremental fetches)
+/// Cursor entry written to JSONL to track the latest fetched post ID,
+/// even when all posts in a batch were filtered out.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SinceIdCursor {
+    _cursor: bool,
+    account: String,
+    max_id: String,
+}
+
+/// Scan existing JSONL file to find the max post ID per account (for incremental fetches).
+/// Uses lowercase account keys for case-insensitive matching.
 fn load_max_ids_per_account(path: &PathBuf) -> std::collections::HashMap<String, String> {
     let mut max_ids = std::collections::HashMap::new();
     let content = match std::fs::read_to_string(path) {
@@ -89,10 +112,21 @@ fn load_max_ids_per_account(path: &PathBuf) -> std::collections::HashMap<String,
         if line.is_empty() {
             continue;
         }
+        // Try cursor entries first
+        if let Ok(cursor) = serde_json::from_str::<SinceIdCursor>(line) {
+            if cursor._cursor {
+                let key = cursor.account.to_ascii_lowercase();
+                let entry = max_ids.entry(key).or_insert_with(String::new);
+                if cursor.max_id.as_str() > entry.as_str() {
+                    *entry = cursor.max_id;
+                }
+                continue;
+            }
+        }
+        // Regular post entries
         if let Ok(post) = serde_json::from_str::<SourcePost>(line) {
-            let entry = max_ids
-                .entry(post.author.clone())
-                .or_insert_with(String::new);
+            let key = post.author.to_ascii_lowercase();
+            let entry = max_ids.entry(key).or_insert_with(String::new);
             if post.id.as_str() > entry.as_str() {
                 *entry = post.id;
             }
