@@ -6,8 +6,10 @@
 //! - `llm`: LLM provider adapters (OpenAI, Anthropic, etc.)
 //! - `x`: X (Twitter) API adapters
 //! - `nostr`: Nostr publishing adapter
+//! - `jsonl_source`: JSONL file-based post source
 
 mod definitions_fs;
+mod jsonl_source;
 pub mod outbox;
 mod state_memory;
 mod state_sqlite;
@@ -30,4 +32,9 @@ pub mod state {
 /// Re-exports for X API adapters
 pub mod x {
     pub use crate::x_api::{StubPostSource, StubXPublisher, XPostSource, XPublisher};
+}
+
+/// Re-exports for file-based post source
+pub mod jsonl {
+    pub use crate::jsonl_source::JsonlPostSource;
 }
