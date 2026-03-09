@@ -349,7 +349,7 @@ impl App {
     }
 }
 
-fn ui(f: &mut ratatui::Frame, app: &App) {
+fn ui(f: &mut ratatui::Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -394,7 +394,7 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
 
     // Tags panel or new tag form
     match app.mode {
-        Mode::Normal => render_tags(f, app, chunks[1]),
+        Mode::Normal => render_tags(f, &mut *app, chunks[1]),
         Mode::NewTag => render_new_tag_form(f, app, chunks[1]),
     }
 
@@ -425,11 +425,23 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
     f.render_widget(status, chunks[2]);
 }
 
-fn render_tags(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
+fn render_tags(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+    // Adjust scroll offset to keep selected tag visible
+    let inner_height = area.height.saturating_sub(2) as usize; // -2 for borders
+    if inner_height > 0 {
+        if app.selected_tag < app.tag_scroll_offset {
+            app.tag_scroll_offset = app.selected_tag;
+        } else if app.selected_tag >= app.tag_scroll_offset + inner_height {
+            app.tag_scroll_offset = app.selected_tag - inner_height + 1;
+        }
+    }
+
     let tag_items: Vec<ListItem> = app
         .definitions
         .iter()
         .enumerate()
+        .skip(app.tag_scroll_offset)
+        .take(inner_height)
         .map(|(i, def)| {
             let selected = app.tag_selections.contains(&def.id);
             let checkbox = if selected { "[x]" } else { "[ ]" };
@@ -450,12 +462,23 @@ fn render_tags(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
         .collect();
 
     let selected_tags: Vec<&str> = app.tag_selections.iter().map(|s| s.as_str()).collect();
+    let scroll_indicator = if app.definitions.len() > inner_height && inner_height > 0 {
+        format!(
+            " [{}-{}/{}]",
+            app.tag_scroll_offset + 1,
+            (app.tag_scroll_offset + inner_height).min(app.definitions.len()),
+            app.definitions.len()
+        )
+    } else {
+        String::new()
+    };
     let title = if selected_tags.is_empty() {
-        " Tags (Space: toggle, n: new tag) ".to_string()
+        format!(" Tags{} (Space: toggle, n: new tag) ", scroll_indicator)
     } else {
         format!(
-            " Tags [{}] (Space: toggle, n: new tag) ",
-            selected_tags.join(", ")
+            " Tags [{}]{} (Space: toggle, n: new tag) ",
+            selected_tags.join(", "),
+            scroll_indicator
         )
     };
 
@@ -593,29 +616,13 @@ pub async fn execute(args: CurateArgs, config_path: Option<PathBuf>) -> Result<(
         uncurated
     );
 
-    // Set up terminal
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    let mut app = App::new(
+    let app = run_tui_session(
         posts,
         definitions,
         curated_ids,
         args.output.clone(),
         definitions_dir,
-    );
-
-    // Main event loop
-    let result = run_event_loop(&mut terminal, &mut app);
-
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-
-    result?;
+    )?;
 
     println!(
         "Curated {} posts. Output: {}",
@@ -626,12 +633,51 @@ pub async fn execute(args: CurateArgs, config_path: Option<PathBuf>) -> Result<(
     Ok(())
 }
 
+/// Guard that restores terminal state on drop, ensuring cleanup
+/// even if setup or the event loop fails partway through.
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+    }
+}
+
+fn run_tui_session(
+    posts: Vec<SourcePost>,
+    definitions: Vec<TagDefinition>,
+    curated_ids: HashSet<String>,
+    output_path: PathBuf,
+    definitions_dir: PathBuf,
+) -> Result<App> {
+    enable_raw_mode()?;
+    let _guard = TerminalGuard;
+
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut app = App::new(
+        posts,
+        definitions,
+        curated_ids,
+        output_path,
+        definitions_dir,
+    );
+    run_event_loop(&mut terminal, &mut app)?;
+
+    // _guard drops here, restoring terminal state
+    Ok(app)
+}
+
 fn run_event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
 ) -> Result<()> {
     loop {
-        terminal.draw(|f| ui(f, app))?;
+        terminal.draw(|f| ui(f, &mut *app))?;
 
         if app.should_quit {
             break;
