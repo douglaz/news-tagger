@@ -39,6 +39,9 @@ pub enum Commands {
 
     /// Validate configuration and show status
     Doctor(DoctorArgs),
+
+    /// Interactive TUI for curating post classifications
+    Curate(CurateArgs),
 }
 
 #[derive(Args, Debug)]
@@ -154,4 +157,19 @@ pub struct DoctorArgs {
     /// Output as JSON
     #[arg(long)]
     pub json: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct CurateArgs {
+    /// Input JSONL file with collected posts
+    #[arg(long, default_value = "./collected.jsonl")]
+    pub input: PathBuf,
+
+    /// Output JSONL file for curated classifications
+    #[arg(long, default_value = "./curated.jsonl")]
+    pub output: PathBuf,
+
+    /// Override definitions directory
+    #[arg(long)]
+    pub definitions_dir: Option<PathBuf>,
 }

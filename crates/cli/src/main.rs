@@ -26,6 +26,7 @@ async fn main() -> Result<()> {
         Commands::Definitions(args) => commands::definitions::execute(args, cli.config).await,
         Commands::Config(args) => commands::config::execute(args).await,
         Commands::Doctor(args) => commands::doctor::execute(args, cli.config).await,
+        Commands::Curate(args) => commands::curate::execute(args, cli.config).await,
     }
 }
 
