@@ -61,7 +61,7 @@ bech32 = "0.11"
 secrecy = { version = "0.10", features = ["serde"] }
 
 # TUI
-ratatui = "0.29"
+ratatui = "0.30"
 crossterm = "0.28"
 
 # UUID
