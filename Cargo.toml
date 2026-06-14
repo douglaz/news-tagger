@@ -47,7 +47,7 @@ time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
 async-trait = "0.1"
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }
 
 # FS watching
 notify = "7"
