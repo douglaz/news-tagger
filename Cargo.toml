@@ -62,7 +62,7 @@ secrecy = { version = "0.10", features = ["serde"] }
 
 # TUI
 ratatui = "0.30"
-crossterm = "0.28"
+crossterm = "0.29"
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
